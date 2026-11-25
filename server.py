@@ -45,6 +45,7 @@ DEFAULTS: dict[str, Any] = {
     "judge": {"interval_s": 0.5, "final_delay_s": 3.0},
     "camera": {"backend": "auto", "width": 1920, "height": 1080, "helper_python": "/usr/bin/python3"},
     "mdns": {"enabled": True},
+    "cloud": {"url": "", "device_key": "", "device_id": "rad2pi", "timeout_s": 30.0},
 }
 
 
@@ -75,6 +76,8 @@ if ARGS.camera:
     CFG["camera"]["backend"] = ARGS.camera
 if ARGS.port:
     CFG["http_port"] = ARGS.port
+if os.environ.get("DOORRADAR_DEVICE_KEY"):                  # 기기 키를 config.toml 에 안 적고 싶을 때
+    CFG["cloud"]["device_key"] = os.environ["DOORRADAR_DEVICE_KEY"]
 
 logging.basicConfig(level=ARGS.log.upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("server")
@@ -98,6 +101,7 @@ from fastapi import Depends, FastAPI, Query, Request, WebSocket, WebSocketDiscon
 from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
 
 from camera import Camera, thumb_path  # noqa: E402
+from cloud import CloudClient  # noqa: E402
 from judge import LiveJudge  # noqa: E402
 from radar import RadarReceiver  # noqa: E402
 from store import Store  # noqa: E402
@@ -143,6 +147,7 @@ store = Store(DATA, TZ)
 rx = RadarReceiver(CFG["radar"]["host"], int(CFG["radar"]["port"]), float(CFG["radar"]["window_s"]))
 cam = Camera(CFG["camera"]["backend"], int(CFG["camera"]["width"]), int(CFG["camera"]["height"]),
              CFG["camera"]["helper_python"])
+cloud = CloudClient(CFG["cloud"], DATA, store.get, store.photo_file, thumb_path)
 pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="work")
 PAIR_CODE = str(CFG["pair_code"] or f"{random.randint(0, 999999):06d}")
 STARTED = time.monotonic()
@@ -191,6 +196,7 @@ def _camera_event(info: dict, shot: dict) -> None:
     saved = store.put_camera(event_id, key, ev, photo)
     log.info("촬영 이벤트 %d: %s %s (%s)", event_id, info["name"], shot["situation"], "사진" if photo else "사진 없음")
     emit({"type": "event", "event": summary(saved)})
+    cloud.enqueue(event_id)
 
 
 def on_final(info: dict) -> None:
@@ -214,6 +220,7 @@ def _final_event(info: dict) -> None:
     log.info("최종 판정 %d%s: %s %s %.0f%%", saved["id"], "" if created else " (갱신)", info["name"],
              f["situation"], f["prob"] * 100)
     emit({"type": "event", "event": summary(saved)})
+    cloud.enqueue(saved["id"])
 
 
 judge = LiveJudge(rx, MODELS, lambda: store.settings, on_camera, on_final,
@@ -324,6 +331,7 @@ async def lifespan(_: FastAPI):
     log.info("모델: %s (판정 영역 %s)", model_path.name, REGION.text() if REGION else "없음")
     rx.start()
     judge.start()
+    cloud.start()
     tasks = [asyncio.create_task(broadcaster()), asyncio.create_task(housekeeping())]
     mdns = await LOOP.run_in_executor(None, start_mdns)
     try:
@@ -333,6 +341,7 @@ async def lifespan(_: FastAPI):
             t.cancel()
         judge.stop()
         rx.stop()
+        cloud.stop()
         cam.close()
         if mdns:
             zc, info = mdns
@@ -451,7 +460,9 @@ async def event_label(event_id: int, request: Request, _: str = Depends(require_
     if situation is not None and (situation not in SITUATIONS or situation == C.UNDECIDED):
         raise ApiError(400, "bad_situation", "situation 은 " + ", ".join(s for s in SITUATIONS if s != C.UNDECIDED)
                        + " 중 하나여야 합니다.")
-    return summary(store.set_label(event_id, situation))
+    saved = store.set_label(event_id, situation)
+    cloud.enqueue(event_id)
+    return summary(saved)
 
 
 @app.get("/api/settings")

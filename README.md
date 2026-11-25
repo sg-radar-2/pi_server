@@ -111,6 +111,10 @@ curl -s localhost:8080/api/info         # 서버 살아 있는지
 - `pair_code`: 시연 때는 고정해 두면 편하다(예: `"482913"`).
 - `model`: 기본값은 `models/situation_trees_real.pkl`이다.
 - `camera.backend`: 보통 `auto`. 촬영이 이상하면 `rpicam`으로 바꿔서 비교한다.
+- `[cloud]`: `url`을 적으면 이벤트(camera·final, 정답 표시 포함)와 사진을 클라우드로 올린다(`cloud.py`). 비우면 꺼진다.
+  - 보내는 곳: `POST /api/device/events`(JSON), `POST /api/device/events/{edge_event_id}/photo`(JPEG, 썸네일은 `?thumb=1`). 헤더 `X-Device-Key`. 자세한 형식은 [docs/CLOUD_API.md](docs/CLOUD_API.md).
+  - 판정·촬영을 막지 않는다. 못 보낸 것은 `data_dir/cloud_outbox.db`에 남아 있다가 다시 보낸다(5초 → 최대 10분 간격).
+  - 기기 키(`device_key`)는 환경변수 `DOORRADAR_DEVICE_KEY`로 줘도 된다.
 
 ## 모델 파일
 

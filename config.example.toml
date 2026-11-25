@@ -27,3 +27,9 @@ helper_python = "/usr/bin/python3"   # picamera2 가 깔린 시스템 파이썬
 
 [mdns]
 enabled = true
+
+[cloud]
+url = ""             # 예: "https://rad2-cloud.onrender.com". 비우면 클라우드로 안 올림 (로컬 앱만)
+device_key = ""      # 클라우드에서 받은 Device API Key (X-Device-Key 헤더). 환경변수 DOORRADAR_DEVICE_KEY 가 있으면 그걸 씀
+device_id = "rad2pi" # 클라우드 devices.device_id
+timeout_s = 30.0     # Render 무료 서버는 잠에서 깨는 데 30초쯤 걸림
