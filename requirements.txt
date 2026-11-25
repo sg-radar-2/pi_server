@@ -1,0 +1,8 @@
+fastapi>=0.110
+uvicorn>=0.29
+websockets>=12
+zeroconf>=0.130
+pillow>=10
+numpy>=2
+# 모델(.pkl)을 학습한 PC 와 같은 버전이어야 열린다. PC 에서 버전을 올렸으면 여기도 같이 올린다.
+scikit-learn==1.9.1

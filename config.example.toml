@@ -1,0 +1,29 @@
+# 도어 레이더 파이 서버 설정. install.sh 가 처음 한 번 config.toml 로 복사한다 (그 뒤로는 config.toml 을 고친다).
+# 고친 뒤: sudo systemctl restart doorradar
+
+device_name = "doorradar"      # mDNS 서비스 이름 (앱의 '같은 Wi-Fi에서 찾은 기기')
+http_port = 8080
+timezone = "Asia/Seoul"
+data_dir = "~/doorradar-data"   # 이벤트 DB, 사진, 페어링 코드
+pair_code = ""                  # 비우면 켤 때마다 새 6자리 (journalctl 과 data_dir/pair_code.txt 에 나옴). 시연 땐 고정 추천
+behavior_dir = ""               # 비우면 ./behavior (deploy.ps1 이 복사해 둠)
+model = "models/situation_trees_real.pkl"   # behavior_dir 기준. 지금 situation_core 버전과 맞아야 함
+device_keep_days = 30           # 파이에 사진·이벤트를 두는 기간 (앱이 장기 보관)
+
+[radar]
+host = ""          # 레이더 IP. 비우면 같은 대역(/24)에서 29172 포트를 찾음. 공유기에서 고정 IP를 잡고 적어 두면 빠름
+port = 29172
+window_s = 180.0   # 최근 이 시간만 판정 (길수록 느려짐)
+
+[judge]
+interval_s = 0.5     # 판정 간격
+final_delay_s = 3.0  # 사람이 사라지고 이만큼 지나면 최종 판정
+
+[camera]
+backend = "auto"     # auto | helper(picamera2) | rpicam(rpicam-still) | fake | none
+width = 1920
+height = 1080
+helper_python = "/usr/bin/python3"   # picamera2 가 깔린 시스템 파이썬
+
+[mdns]
+enabled = true
