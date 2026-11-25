@@ -447,8 +447,8 @@ def event_photo(event_id: int, thumb: int = 0, _: str = Depends(require_token)):
 @app.post("/api/events/{event_id}/label")
 async def event_label(event_id: int, request: Request, _: str = Depends(require_token)) -> dict:
     get_event(event_id)
-    situation = (await request.json()).get("situation")
-    if situation not in SITUATIONS or situation == C.UNDECIDED:
+    situation = (await request.json()).get("situation")     # null 이면 정답 지우기 (앱의 "되돌리기")
+    if situation is not None and (situation not in SITUATIONS or situation == C.UNDECIDED):
         raise ApiError(400, "bad_situation", "situation 은 " + ", ".join(s for s in SITUATIONS if s != C.UNDECIDED)
                        + " 중 하나여야 합니다.")
     return summary(store.set_label(event_id, situation))
