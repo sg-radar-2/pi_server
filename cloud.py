@@ -28,13 +28,25 @@ log = logging.getLogger("cloud")
 DETAIL_KEYS = ("end_situation", "behaviors", "reason", "path", "also", "track")
 TOP_KEYS = ("kind", "person", "t", "started_at", "ended_at", "situation", "prob", "abnormal", "photo", "label")
 
-
 def payload(device_id: str, ev: dict) -> dict:
-    """파이 이벤트(store.get) → 클라우드 형식. camera 는 details 가 빈 객체."""
-    out = {"device_id": device_id, "edge_event_id": ev["id"]}
-    out.update({k: ev.get(k) for k in TOP_KEYS})
-    out["details"] = {k: ev[k] for k in DETAIL_KEYS if k in ev} if ev.get("kind") == "final" else {}
-    return out
+    #기기 이벤트(ev)와 설정(device_id)으로부터 클라우드 전송용 payload를 조합한다."""
+    is_final = ev.get("kind") == "final"
+    details = {k: ev[k] for k in DETAIL_KEYS if k in ev} if is_final else {}
+
+    return {
+        "device_id": device_id,
+        "edge_event_id": ev["id"],
+        "kind": ev.get("kind"),
+        "person": ev.get("person"),
+        "t": ev.get("t"),
+        "situation": ev.get("situation"),
+        "prob": ev.get("prob"),
+        "abnormal": bool(ev.get("abnormal", False)),
+        "started_at": ev.get("started_at"),
+        "ended_at": ev.get("ended_at"),
+        "photo": bool(ev.get("photo", False)),
+        "details": details,
+    }
 
 
 class CloudClient:
@@ -58,7 +70,7 @@ class CloudClient:
                 event_id INTEGER PRIMARY KEY,
                 tries INTEGER NOT NULL DEFAULT 0,
                 next_at REAL NOT NULL DEFAULT 0,
-                ver INTEGER NOT NULL DEFAULT 0      -- enqueue 할 때마다 +1
+                ver INTEGER NOT NULL DEFAULT 0      
             );
             CREATE TABLE IF NOT EXISTS photos_sent (event_id INTEGER PRIMARY KEY);
         """)
@@ -66,7 +78,7 @@ class CloudClient:
 
     # ---- 바깥에서 부르는 것
     def enqueue(self, event_id: int) -> None:
-        """이 이벤트를 (다시) 올려야 한다. 이미 목록에 있으면 바로 보내도록 당긴다."""
+        #"""이 이벤트를 (다시) 올려야 한다. 이미 목록에 있으면 바로 보내도록 당긴다."""
         if not self.enabled:
             return
         with self._lock:
@@ -127,32 +139,48 @@ class CloudClient:
                 self.db.commit()
             self.last_ok, self.error = time.time(), None
 
+    # 2) 한 이벤트에 대해 JSON 전송 + 사진/썸네일 전송 순서 제어
     def _send(self, event_id: int) -> None:
         ev = self._get(event_id)
         if ev is None:                       # 파이에서 이미 지워짐 (보관 기간 지남)
             return
-        self._post("/api/device/events", json.dumps(payload(self.device_id, ev), ensure_ascii=False).encode(),
-                   "application/json")
+        body_dict = payload(self.device_id, ev)
+        log.info("person situation: %s", body_dict.get("situation"))
+
+        # 문서에 적힌 이벤트 전송 경로와 JSON 형식에 맞게 호출
+        self._post(
+            "/api/device/events",
+            json.dumps(payload(self.device_id, ev), ensure_ascii=False).encode("utf-8"),
+            "application/json",
+        )
+
         if not ev.get("photo"):
             return
+
         with self._lock:
             if self.db.execute("SELECT 1 FROM photos_sent WHERE event_id=?", (event_id,)).fetchone():
                 return
+
         p = self._photo(event_id)
         if p is None or not p.exists():
             return
+
+        # 문서에 적힌 사진 업로드 경로/방식에 맞게 조정
         self._post(f"/api/device/events/{event_id}/photo", p.read_bytes(), "image/jpeg")
         t = self._thumb(p)
         if t.exists():
             self._post(f"/api/device/events/{event_id}/photo?thumb=1", t.read_bytes(), "image/jpeg")
+
         with self._lock:
             self.db.execute("INSERT OR IGNORE INTO photos_sent VALUES (?)", (event_id,))
             self.db.commit()
         log.info("클라우드: 이벤트 %d 사진 올림", event_id)
 
+    # 3) 인증 헤더 및 HTTP 요청 전송
     def _post(self, path: str, body: bytes, ctype: str) -> None:
         headers = {"Content-Type": ctype}
         if self.key:
+            # 문서의 인증 헤더 이름(예: X-Device-Key 또는 Authorization) 확인
             headers["X-Device-Key"] = self.key
         req = urllib.request.Request(self.url + path, data=body, headers=headers, method="POST")
         try:

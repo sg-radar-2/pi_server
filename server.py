@@ -464,6 +464,69 @@ async def event_label(event_id: int, request: Request, _: str = Depends(require_
     cloud.enqueue(event_id)
     return summary(saved)
 
+#event 테스트
+@app.post("/api/device/events")
+def test_post_event(
+    person: str = "T3+7",
+    situation = "정상"
+    prob: float = 0.87,
+    abnormal: bool = True,
+) -> dict:
+   # """레이더/카메라 없이 클라우드 POST 이벤트 전송을 빠르게 테스트한다."""
+    event_id = store.reserve_id()
+    now_iso = datetime.now(TZ).isoformat(timespec="milliseconds")
+    ev = {
+        "kind": "camera",
+        "person": person,
+        "t": now_iso,
+        "started_at": now_iso,
+        "ended_at": None,
+        "situation": situation,
+        "prob": round(float(prob), 2),
+        "abnormal": bool(abnormal),
+        "photo": False,
+        "label": None,
+    }
+    saved = store.put_camera(event_id, f"{BOOT}:test:{event_id}", ev, None)
+    emit({"type": "event", "event": summary(saved)})
+    cloud.enqueue(saved["id"])
+    return {"queued_event_id": saved["id"], "cloud_url": CFG["cloud"].get("url")}
+
+'''@app.post("/api/test/post-event")
+def device_event() -> dict:
+    #실제 판정/레이더/카메라 상태에 가까운 값으로 이벤트 1건을 만들어 클라우드로 보낸다.
+    snaps = judge.snapshot()
+    p = snaps[0] if snaps else None  # 현재 판정 중인 첫 번째 대상자(없으면 기본값)
+
+    event_id = store.reserve_id()
+    now_dt = datetime.now(TZ)
+    now_iso = now_dt.isoformat(timespec="milliseconds")
+
+    situation = p["situation"] if p else C.UNDECIDED
+    prob = round(float(p["prob"]), 2) if p else 0.0
+    person = p["name"] if p else "T0"
+
+    photo = None
+    if store.settings.get("camera_on", True) and cam.backend != "none":
+        cand = store.photo_path(event_id, now_dt)
+        if cam.capture(cand):
+            photo = cand
+
+    ev = {
+        "kind": "camera",
+        "person": person,
+        "t": now_iso,
+        "started_at": now_iso,
+        "ended_at": None,
+        "situation": situation,
+        "prob": prob,
+        "abnormal": situation in ABNORMAL,
+        "label": None,
+    }
+    saved = store.put_camera(event_id, f"{BOOT}:test:{event_id}", ev, photo)
+    emit({"type": "event", "event": summary(saved)})
+    cloud.enqueue(saved["id"])
+    return {"queued_event_id": saved["id"], "situation": situation, "photo": bool(photo)}'''
 
 @app.get("/api/settings")
 def get_settings(_: str = Depends(require_token)) -> dict:
