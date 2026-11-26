@@ -468,7 +468,7 @@ async def event_label(event_id: int, request: Request, _: str = Depends(require_
 @app.post("/api/device/events")
 def test_post_event(
     person: str = "T3+7",
-    situation = "정상"
+    situation = "정상",
     prob: float = 0.87,
     abnormal: bool = True,
 ) -> dict:
