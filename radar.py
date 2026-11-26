@@ -26,6 +26,7 @@ import struct
 import threading
 import time
 from collections import deque
+import subprocess
 
 log = logging.getLogger("radar")
 
@@ -153,7 +154,18 @@ def find_radar(port: int = DEVICE_PORT, timeout: float = 0.3) -> str | None:
     me = local_ipv4()
     if not me:
         return None
-    net = ipaddress.ip_network(f"{me}/24", strict=False)
+    try:
+        result = subprocess.check_output(
+            ["ip", "-4", "-o", "addr", "show", "dev", "wlan0"],
+            text=True
+        )
+        cidr = result.split()[3]
+        net = ipaddress.ip_interface(cidr).network
+        log.info("Radar 자동 검색 범위: %s", net)
+
+    except (OSError, subprocess.CalledProcessError, IndexError, ValueError) as exc:
+        log.error("Wi-Fi 네트워크 범위 확인 실패: %s", exc)
+        return None
 
     def probe(ip: str) -> str | None:
         try:

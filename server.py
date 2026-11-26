@@ -45,7 +45,8 @@ DEFAULTS: dict[str, Any] = {
     "judge": {"interval_s": 0.5, "final_delay_s": 3.0},
     "camera": {"backend": "auto", "width": 1920, "height": 1080, "helper_python": "/usr/bin/python3"},
     "mdns": {"enabled": True},
-    "cloud": {"url": "", "device_key": "", "device_id": "rad2pi", "timeout_s": 30.0},
+    "cloud": {"url": "", "device_key": "", "device_id": "rad2pi", "timeout_s": 30.0,
+              "live_enabled": True, "live_fps": 5.0, "live_status_interval_s": 5.0},
 }
 
 
@@ -102,6 +103,7 @@ from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
 
 from camera import Camera, thumb_path  # noqa: E402
 from cloud import CloudClient  # noqa: E402
+from cloud_live import CloudLiveClient  # noqa: E402
 from judge import LiveJudge  # noqa: E402
 from radar import RadarReceiver  # noqa: E402
 from store import Store  # noqa: E402
@@ -332,13 +334,17 @@ async def lifespan(_: FastAPI):
     rx.start()
     judge.start()
     cloud.start()
-    tasks = [asyncio.create_task(broadcaster()), asyncio.create_task(housekeeping())]
+    # Independent task: Cloud WebSocket delays must not block Radar/Judge or local WebSocket.
+    cloud_live = CloudLiveClient(CFG["cloud"], build_frame, device_status_snapshot)
+    tasks = [asyncio.create_task(broadcaster()), asyncio.create_task(housekeeping()),
+             asyncio.create_task(cloud_live.run(), name="cloud-live")]
     mdns = await LOOP.run_in_executor(None, start_mdns)
     try:
         yield
     finally:
         for t in tasks:
             t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         judge.stop()
         rx.stop()
         cloud.stop()
@@ -405,8 +411,8 @@ def cpu_temp() -> float | None:
         return None
 
 
-@app.get("/api/status")
-def status(token: str = Depends(require_token)) -> dict:
+def device_status_snapshot() -> dict:
+    """Pi system stats shared by local REST status and Cloud LIVE status messages."""
     counts = store.counts()
     return {
         "radar": rx.radar_state(), "radar_host": rx.connected_host or CFG["radar"]["host"] or None,
@@ -415,8 +421,13 @@ def status(token: str = Depends(require_token)) -> dict:
         "latency_s": round(judge.analyze_s, 2), "judge_error": judge.error, "cpu_temp_c": cpu_temp(),
         "uptime_s": int(time.monotonic() - STARTED),
         "storage": {"used_gb": counts["used_gb"], "total_gb": counts["total_gb"], "photos": counts["photos"]},
-        "pending_photos": len(store.pending(token, int(CFG["device_keep_days"]))),
     }
+
+
+@app.get("/api/status")
+def status(token: str = Depends(require_token)) -> dict:
+    return {**device_status_snapshot(),
+            "pending_photos": len(store.pending(token, int(CFG["device_keep_days"])))}
 
 
 @app.post("/api/radar/reconnect")
