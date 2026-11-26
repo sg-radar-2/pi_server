@@ -5,7 +5,7 @@ device_name = "doorradar"      # mDNS 서비스 이름 (앱의 '같은 Wi-Fi에�
 http_port = 8080
 timezone = "Asia/Seoul"
 data_dir = "~/doorradar-data"   # 이벤트 DB, 사진, 페어링 코드
-pair_code = "945700"                  # 비우면 켤 때마다 새 6자리 (journalctl 과 data_dir/pair_code.txt 에 나옴). 시연 땐 고정 추천
+pair_code = ""                  # 비우면 켤 때마다 새 6자리 (journalctl 과 data_dir/pair_code.txt 에 나옴). 시연 땐 고정 추천
 behavior_dir = ""               # 비우면 ./behavior (deploy.ps1 이 복사해 둠)
 model = "models/situation_trees_real.pkl"   # behavior_dir 기준. 지금 situation_core 버전과 맞아야 함
 device_keep_days = 30           # 파이에 사진·이벤트를 두는 기간 (앱이 장기 보관)
@@ -29,7 +29,7 @@ helper_python = "/usr/bin/python3"   # picamera2 가 깔린 시스템 파이썬
 enabled = true
 
 [cloud]
-url = "https://rad2-cloud.onrender.com"             # 예: "https://rad2-cloud.onrender.com". 비우면 클라우드로 안 올림 (로컬 앱만)
-device_key = "w2o1HDExo2DSZ8HgkTs7IxomGmeZ8qkkLdGe/GaErfo="      # 클라우드에서 받은 Device API Key (X-Device-Key 헤더). 환경변수 DOORRADAR_DEVICE_KEY 가 있으면 그걸 씀
+url = ""             # 예: "https://rad2-cloud.onrender.com". 비우면 클라우드로 안 올림 (로컬 앱만)
+device_key = ""      # 클라우드에서 받은 Device API Key (X-Device-Key 헤더). 환경변수 DOORRADAR_DEVICE_KEY 가 있으면 그걸 씀
 device_id = "rad2pi" # 클라우드 devices.device_id
 timeout_s = 30.0     # Render 무료 서버는 잠에서 깨는 데 30초쯤 걸림
